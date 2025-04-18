@@ -1,0 +1,157 @@
+#!/usr/bin/python
+# Script:  denprof.py
+# Purpose: calculate velocity of penetrants (or polymers) as function of distance from interface using the shortest diffusion of the log-scaled coordinate.
+# Syntax:  denprof.py  
+# Author:  Y. Seo from Lisa's msd code & Youngmi's circling.py
+# derived from fortran code
+# -------------------------------------------------------
+
+from re import I, X
+import sys,string,fileinput
+#wfrom tkinter import Menubutton
+import numpy as np
+from math import *
+
+# INPUT PARAMETERs
+nconf =    101
+nskip =    0 #nskip =0 means starting from the first frame
+blocksize = 20
+block =    -1
+count =    -1
+M=np.array([0,1.0,5.7,5.7,0.2,2.0,4.1])
+msd=np.zeros((nconf, 3), dtype=float)  
+half =     True
+infiles = ['hint.lammpstrj']
+if half:
+    file = 't+.data'
+else:
+    file = 'fullsize.data'
+
+def process_bar(num, total):
+    rate = float(num)/total
+    ratenum = int(100*rate)
+    r = '\r[{}{}]{}%'.format('*'*ratenum,' '*(100-ratenum), ratenum)
+    sys.stdout.write(r)
+    sys.stdout.flush()
+
+IN = fileinput.input(infiles)
+for loopnum in range(0,nskip):
+    IN.readline()
+    IN.readline()
+    IN.readline()
+    line = IN.readline()      # number of atoms
+    fields = str.split(line)
+    natoms = int(fields[0])
+    IN.readline()
+    IN.readline()      
+    IN.readline()      
+    IN.readline()      
+    IN.readline()
+    for j in range(natoms):
+        IN.readline()
+
+avgLz = 0 
+
+st=np.zeros((nconf,1))
+#print "Reading config file...."
+
+for kconf in range(0,nconf):
+    process_bar(kconf+1,nconf)
+    IN.readline()
+    line = IN.readline()
+    st[kconf] = map(int,line.split())
+    count +=1
+    IN.readline()
+    line = IN.readline()      # number of atoms
+    fields = str.split(line)
+    if count == 0:
+        natoms = int(fields[0])
+        dim=natoms+1
+        zc = [0]*dim
+        zz = [0]*dim
+        yc = [0]*dim
+        xc = [0]*dim
+        xb = [0]*dim
+        yb = [0]*dim
+        zb = [0]*dim
+        x0 = [0]*dim
+        y0 = [0]*dim
+        z0 = [0]*dim
+        delt = [0]*dim
+        nc=[0]*8  
+        
+        xcom0=ycom0=zcom0=xcom=ycom=zcom=Mtotal=0    
+    cirxcm = 0
+    cirycm = 0
+    xcom=0
+    ycom=0
+    zcom=0
+    typea = [0]*dim
+    IN.readline()
+    line = IN.readline()      
+    [xm,xp] = map(float,line.split())
+    line = IN.readline()      
+    [ym,yp] = map(float,line.split())
+    line = IN.readline()
+    [zm,zp] = map(float,line.split())
+    line = IN.readline()
+    xbox = xp - xm
+    ybox = yp - ym
+    zbox = zp - zm
+    vol = xbox*ybox*zbox
+    for j in range(1,dim):
+        line = IN.readline()
+        [ii,molj,typej,q,x1,x2,x3,n1,n2,n3] = str.split(line)
+        k = int(ii) # atom index
+        typea[k] = int(typej)
+        xc[k] = xbox*float(x1)+xbox*float(n1)
+        yc[k] = ybox*float(x2)+ybox*float(n2)
+        zz[k] = zbox*float(x3)+zbox*float(n3)
+        if kconf == 0 :
+            x0[k]=xbox*float(x1)+xbox*float(n1)
+            y0[k]=ybox*float(x2)+ybox*float(n2)
+            z0[k]=zbox*float(x3)+zbox*float(n3)
+            
+            xcom0 += xbox*float(x1)*M[int(typej)]
+            ycom0 += ybox*float(x2)*M[int(typej)]
+            zcom0 += zbox*float(x3)*M[int(typej)]
+            Mtotal += M[int(typej)]
+            
+        if count==blocksize :
+            xcom +=xbox*float(x1)*M[int(typej)]/Mtotal
+            ycom +=ybox*float(x2)*M[int(typej)]/Mtotal
+            zcom +=zbox*float(x3)*M[int(typej)]/Mtotal
+
+    if kconf == 0:        
+        xcom0/=Mtotal
+        ycom0/=Mtotal
+        zcom0/=Mtotal
+        for i in range(1,7):
+            nc[i] = typea.count(i)
+    if count ==blocksize:
+        print(st[kconf])
+        count = 0
+        block +=1
+        for i in range(1,dim):
+            if typea[i]>=4:
+               # msd[kconf,typea[i]-3]+= ( pow((yc[i]-ycom) - (y0[i]-ycom0),2) + pow((xc[i]-xcom) - (x0[i]-xcom0),2) + pow((zz[i]-zcom) - (z0[i]-zcom0),2) )/nc[typea[i]]
+               msd[block,typea[i]-4]+=  pow((xc[i]-xcom) - (x0[i]-xcom0),1) / nc[typea[i]]
+               x0[i]=xc[i]
+               y0[i]=yc[i]
+               z0[i]=zc[i]
+        xcom0 = xcom
+        ycom0 = ycom
+        zcom0 = zcom
+
+# end of loop
+OUT = open(file, 'w')
+OUT.write("%4s, %9s, %9s, %9s\n" % ('step','Li','Tf1','Tf2'))
+mod =1
+if mod ==1:
+    for i in range(0,block+1):
+        OUT.write("%8d  %8.9f  %8.9f  %8.9f %8.9f\n" % (st[i],msd[i,0],msd[i,1],msd[i,2],msd[i,0]/(msd[i,0]-msd[i,1])))
+    OUT.close()
+if mod ==2:
+    for i in range(0,block+1):
+        OUT.write("%8d  %8.9f\n" % (st[i],msd[i,0]/(msd[i,0]-msd[i,1])))
+    OUT.close()
