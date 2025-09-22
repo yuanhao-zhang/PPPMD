@@ -15,7 +15,7 @@ from math import *
 import matplotlib.pyplot as plt
 # INPUT PARAMETERs
 nconf =    50
-nskip =    10 #nskip =0 means starting from the first frame
+nskip =    50 #nskip =0 means starting from the first frame
 M=np.array([0,1.0,1.0,1.0,1.0])
 
 
